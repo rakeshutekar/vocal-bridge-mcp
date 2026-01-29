@@ -14,6 +14,18 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
 
+// API Tokens from environment variables (set these in Railway dashboard)
+const ENV_TOKENS = {
+  railway: process.env.RAILWAY_TOKEN || '',
+  supabase: process.env.SUPABASE_TOKEN || '',
+  github: process.env.GITHUB_TOKEN || ''
+};
+
+// Helper to get token (use provided token or fall back to env var)
+function getToken(providedToken, service) {
+  return providedToken || ENV_TOKENS[service];
+}
+
 // Railway API configuration
 const RAILWAY_API_URL = 'https://backboard.railway.app/graphql/v2';
 
@@ -543,9 +555,9 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' }
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' }
           },
-          required: ['token']
+          required: []
         }
       },
       {
@@ -554,11 +566,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' },
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' },
             name: { type: 'string', description: 'Project name' },
             description: { type: 'string', description: 'Project description' }
           },
-          required: ['token', 'name']
+          required: ['name']
         }
       },
       {
@@ -567,13 +579,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' },
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' },
             projectId: { type: 'string', description: 'Project ID' },
             environmentId: { type: 'string', description: 'Environment ID' },
             repoUrl: { type: 'string', description: 'GitHub repository URL' },
             branch: { type: 'string', description: 'Branch name (default: main)' }
           },
-          required: ['token', 'projectId', 'environmentId', 'repoUrl']
+          required: ['projectId', 'environmentId', 'repoUrl']
         }
       },
       {
@@ -582,11 +594,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' },
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' },
             serviceId: { type: 'string', description: 'Service ID' },
             environmentId: { type: 'string', description: 'Environment ID' }
           },
-          required: ['token', 'serviceId', 'environmentId']
+          required: ['serviceId', 'environmentId']
         }
       },
       {
@@ -595,11 +607,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' },
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' },
             serviceId: { type: 'string', description: 'Service ID' },
             environmentId: { type: 'string', description: 'Environment ID' }
           },
-          required: ['token', 'serviceId', 'environmentId']
+          required: ['serviceId', 'environmentId']
         }
       },
       {
@@ -608,12 +620,12 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' },
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' },
             serviceId: { type: 'string', description: 'Service ID' },
             environmentId: { type: 'string', description: 'Environment ID' },
             variables: { type: 'object', description: 'Key-value pairs of environment variables' }
           },
-          required: ['token', 'serviceId', 'environmentId', 'variables']
+          required: ['serviceId', 'environmentId', 'variables']
         }
       },
       {
@@ -622,10 +634,10 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Railway API token' },
+            token: { type: 'string', description: 'Railway API token (optional, uses RAILWAY_TOKEN env var if not provided)' },
             projectId: { type: 'string', description: 'Project ID' }
           },
-          required: ['token', 'projectId']
+          required: ['projectId']
         }
       },
       // Supabase Tools
@@ -635,9 +647,9 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' }
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' }
           },
-          required: ['token']
+          required: []
         }
       },
       {
@@ -646,10 +658,10 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' },
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' },
             projectRef: { type: 'string', description: 'Project reference ID' }
           },
-          required: ['token', 'projectRef']
+          required: ['projectRef']
         }
       },
       {
@@ -658,13 +670,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' },
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' },
             name: { type: 'string', description: 'Project name' },
             organizationId: { type: 'string', description: 'Organization ID' },
             dbPassword: { type: 'string', description: 'Database password' },
             region: { type: 'string', description: 'Region (default: us-east-1)' }
           },
-          required: ['token', 'name', 'organizationId', 'dbPassword']
+          required: ['name', 'organizationId', 'dbPassword']
         }
       },
       {
@@ -673,9 +685,9 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' }
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' }
           },
-          required: ['token']
+          required: []
         }
       },
       {
@@ -684,11 +696,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' },
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' },
             projectRef: { type: 'string', description: 'Project reference ID' },
             sql: { type: 'string', description: 'SQL query to execute' }
           },
-          required: ['token', 'projectRef', 'sql']
+          required: ['projectRef', 'sql']
         }
       },
       {
@@ -697,10 +709,10 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' },
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' },
             projectRef: { type: 'string', description: 'Project reference ID' }
           },
-          required: ['token', 'projectRef']
+          required: ['projectRef']
         }
       },
       {
@@ -709,7 +721,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'Supabase access token' },
+            token: { type: 'string', description: 'Supabase access token (optional, uses SUPABASE_TOKEN env var if not provided)' },
             projectRef: { type: 'string', description: 'Project reference ID' },
             tableName: { type: 'string', description: 'Table name' },
             columns: {
@@ -728,7 +740,7 @@ function createMCPServer() {
               }
             }
           },
-          required: ['token', 'projectRef', 'tableName', 'columns']
+          required: ['projectRef', 'tableName', 'columns']
         }
       },
       // GitHub Tools
@@ -738,9 +750,9 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' }
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' }
           },
-          required: ['token']
+          required: []
         }
       },
       {
@@ -749,9 +761,9 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' }
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' }
           },
-          required: ['token']
+          required: []
         }
       },
       {
@@ -760,11 +772,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             sort: { type: 'string', description: 'Sort by: created, updated, pushed, full_name (default: updated)' },
             perPage: { type: 'number', description: 'Results per page (default: 30)' }
           },
-          required: ['token']
+          required: []
         }
       },
       {
@@ -773,11 +785,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -786,13 +798,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             name: { type: 'string', description: 'Repository name' },
             description: { type: 'string', description: 'Repository description' },
             isPrivate: { type: 'boolean', description: 'Make repository private (default: false)' },
             autoInit: { type: 'boolean', description: 'Initialize with README (default: true)' }
           },
-          required: ['token', 'name']
+          required: ['name']
         }
       },
       {
@@ -801,11 +813,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -814,13 +826,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             path: { type: 'string', description: 'File path' },
             ref: { type: 'string', description: 'Branch or commit (default: main)' }
           },
-          required: ['token', 'owner', 'repo', 'path']
+          required: ['owner', 'repo', 'path']
         }
       },
       {
@@ -829,7 +841,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             path: { type: 'string', description: 'File path' },
@@ -838,7 +850,7 @@ function createMCPServer() {
             branch: { type: 'string', description: 'Branch name (default: main)' },
             sha: { type: 'string', description: 'SHA of file to update (required for updates)' }
           },
-          required: ['token', 'owner', 'repo', 'path', 'content', 'message']
+          required: ['owner', 'repo', 'path', 'content', 'message']
         }
       },
       {
@@ -847,7 +859,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             path: { type: 'string', description: 'File path' },
@@ -855,7 +867,7 @@ function createMCPServer() {
             sha: { type: 'string', description: 'SHA of file to delete' },
             branch: { type: 'string', description: 'Branch name (default: main)' }
           },
-          required: ['token', 'owner', 'repo', 'path', 'message', 'sha']
+          required: ['owner', 'repo', 'path', 'message', 'sha']
         }
       },
       {
@@ -864,7 +876,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             files: {
@@ -882,7 +894,7 @@ function createMCPServer() {
             message: { type: 'string', description: 'Commit message' },
             branch: { type: 'string', description: 'Branch name (default: main)' }
           },
-          required: ['token', 'owner', 'repo', 'files', 'message']
+          required: ['owner', 'repo', 'files', 'message']
         }
       },
       {
@@ -891,11 +903,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -904,13 +916,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             branchName: { type: 'string', description: 'New branch name' },
             fromBranch: { type: 'string', description: 'Source branch (default: main)' }
           },
-          required: ['token', 'owner', 'repo', 'branchName']
+          required: ['owner', 'repo', 'branchName']
         }
       },
       {
@@ -919,12 +931,12 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             branch: { type: 'string', description: 'Branch name to delete' }
           },
-          required: ['token', 'owner', 'repo', 'branch']
+          required: ['owner', 'repo', 'branch']
         }
       },
       {
@@ -933,13 +945,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             branch: { type: 'string', description: 'Branch name (default: main)' },
             perPage: { type: 'number', description: 'Results per page (default: 30)' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -948,12 +960,12 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             sha: { type: 'string', description: 'Commit SHA' }
           },
-          required: ['token', 'owner', 'repo', 'sha']
+          required: ['owner', 'repo', 'sha']
         }
       },
       {
@@ -962,7 +974,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             title: { type: 'string', description: 'PR title' },
@@ -971,7 +983,7 @@ function createMCPServer() {
             body: { type: 'string', description: 'PR description' },
             draft: { type: 'boolean', description: 'Create as draft (default: false)' }
           },
-          required: ['token', 'owner', 'repo', 'title', 'head', 'base']
+          required: ['owner', 'repo', 'title', 'head', 'base']
         }
       },
       {
@@ -980,13 +992,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             state: { type: 'string', description: 'State: open, closed, all (default: open)' },
             perPage: { type: 'number', description: 'Results per page (default: 30)' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -995,12 +1007,12 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             pullNumber: { type: 'number', description: 'Pull request number' }
           },
-          required: ['token', 'owner', 'repo', 'pullNumber']
+          required: ['owner', 'repo', 'pullNumber']
         }
       },
       {
@@ -1009,7 +1021,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             pullNumber: { type: 'number', description: 'Pull request number' },
@@ -1017,7 +1029,7 @@ function createMCPServer() {
             commitMessage: { type: 'string', description: 'Merge commit message' },
             mergeMethod: { type: 'string', description: 'Merge method: merge, squash, rebase (default: merge)' }
           },
-          required: ['token', 'owner', 'repo', 'pullNumber']
+          required: ['owner', 'repo', 'pullNumber']
         }
       },
       {
@@ -1026,7 +1038,7 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             title: { type: 'string', description: 'Issue title' },
@@ -1034,7 +1046,7 @@ function createMCPServer() {
             labels: { type: 'array', items: { type: 'string' }, description: 'Labels' },
             assignees: { type: 'array', items: { type: 'string' }, description: 'Assignees' }
           },
-          required: ['token', 'owner', 'repo', 'title']
+          required: ['owner', 'repo', 'title']
         }
       },
       {
@@ -1043,13 +1055,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             state: { type: 'string', description: 'State: open, closed, all (default: open)' },
             perPage: { type: 'number', description: 'Results per page (default: 30)' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -1058,13 +1070,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             issueNumber: { type: 'number', description: 'Issue or PR number' },
             body: { type: 'string', description: 'Comment body' }
           },
-          required: ['token', 'owner', 'repo', 'issueNumber', 'body']
+          required: ['owner', 'repo', 'issueNumber', 'body']
         }
       },
       {
@@ -1073,13 +1085,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             sha: { type: 'string', description: 'Tree SHA or branch (default: main)' },
             recursive: { type: 'boolean', description: 'Get tree recursively (default: true)' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -1088,13 +1100,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             owner: { type: 'string', description: 'Repository owner' },
             repo: { type: 'string', description: 'Repository name' },
             path: { type: 'string', description: 'Directory path (default: root)' },
             ref: { type: 'string', description: 'Branch or commit (default: main)' }
           },
-          required: ['token', 'owner', 'repo']
+          required: ['owner', 'repo']
         }
       },
       {
@@ -1103,13 +1115,13 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             query: { type: 'string', description: 'Search query' },
             sort: { type: 'string', description: 'Sort by: stars, forks, updated (default: stars)' },
             order: { type: 'string', description: 'Order: asc, desc (default: desc)' },
             perPage: { type: 'number', description: 'Results per page (default: 10)' }
           },
-          required: ['token', 'query']
+          required: ['query']
         }
       },
       {
@@ -1118,11 +1130,11 @@ function createMCPServer() {
         inputSchema: {
           type: 'object',
           properties: {
-            token: { type: 'string', description: 'GitHub personal access token' },
+            token: { type: 'string', description: 'GitHub token (optional, uses GITHUB_TOKEN env var if not provided)' },
             query: { type: 'string', description: 'Search query' },
             perPage: { type: 'number', description: 'Results per page (default: 30)' }
           },
-          required: ['token', 'query']
+          required: ['query']
         }
       }
     ]
@@ -1132,134 +1144,139 @@ function createMCPServer() {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    // Get tokens (use provided or fall back to environment variables)
+    const railwayToken = getToken(args.token, 'railway');
+    const supabaseToken = getToken(args.token, 'supabase');
+    const githubToken = getToken(args.token, 'github');
+
     try {
       let result;
 
       switch (name) {
         // Railway tools
         case 'railway_list_projects':
-          result = await railwayGetProjects(args.token);
+          result = await railwayGetProjects(railwayToken);
           break;
         case 'railway_create_project':
-          result = await railwayCreateProject(args.token, args.name, args.description);
+          result = await railwayCreateProject(railwayToken, args.name, args.description);
           break;
         case 'railway_create_service':
-          result = await railwayCreateService(args.token, args.projectId, args.environmentId, args.repoUrl, args.branch);
+          result = await railwayCreateService(railwayToken, args.projectId, args.environmentId, args.repoUrl, args.branch);
           break;
         case 'railway_deploy':
-          result = await railwayDeploy(args.token, args.serviceId, args.environmentId);
+          result = await railwayDeploy(railwayToken, args.serviceId, args.environmentId);
           break;
         case 'railway_generate_domain':
-          result = await railwayGenerateDomain(args.token, args.serviceId, args.environmentId);
+          result = await railwayGenerateDomain(railwayToken, args.serviceId, args.environmentId);
           break;
         case 'railway_set_variables':
-          result = await railwaySetVariables(args.token, args.serviceId, args.environmentId, args.variables);
+          result = await railwaySetVariables(railwayToken, args.serviceId, args.environmentId, args.variables);
           break;
         case 'railway_get_deployments':
-          result = await railwayGetDeployments(args.token, args.projectId);
+          result = await railwayGetDeployments(railwayToken, args.projectId);
           break;
 
         // Supabase tools
         case 'supabase_list_projects':
-          result = await supabaseGetProjects(args.token);
+          result = await supabaseGetProjects(supabaseToken);
           break;
         case 'supabase_get_project':
-          result = await supabaseGetProject(args.token, args.projectRef);
+          result = await supabaseGetProject(supabaseToken, args.projectRef);
           break;
         case 'supabase_create_project':
-          result = await supabaseCreateProject(args.token, args.name, args.organizationId, args.dbPassword, args.region);
+          result = await supabaseCreateProject(supabaseToken, args.name, args.organizationId, args.dbPassword, args.region);
           break;
         case 'supabase_list_organizations':
-          result = await supabaseGetOrganizations(args.token);
+          result = await supabaseGetOrganizations(supabaseToken);
           break;
         case 'supabase_run_sql':
-          result = await supabaseRunSQL(args.token, args.projectRef, args.sql);
+          result = await supabaseRunSQL(supabaseToken, args.projectRef, args.sql);
           break;
         case 'supabase_list_tables':
-          result = await supabaseGetTables(args.token, args.projectRef);
+          result = await supabaseGetTables(supabaseToken, args.projectRef);
           break;
         case 'supabase_create_table':
-          result = await supabaseCreateTable(args.token, args.projectRef, args.tableName, args.columns);
+          result = await supabaseCreateTable(supabaseToken, args.projectRef, args.tableName, args.columns);
           break;
 
         // GitHub tools
         case 'github_verify_token':
-          result = await githubVerifyToken(args.token);
+          result = await githubVerifyToken(githubToken);
           break;
         case 'github_get_user':
-          result = await githubGetUser(args.token);
+          result = await githubGetUser(githubToken);
           break;
         case 'github_list_repositories':
-          result = await githubListRepositories(args.token, args.sort, args.perPage);
+          result = await githubListRepositories(githubToken, args.sort, args.perPage);
           break;
         case 'github_get_repository':
-          result = await githubGetRepository(args.token, args.owner, args.repo);
+          result = await githubGetRepository(githubToken, args.owner, args.repo);
           break;
         case 'github_create_repository':
-          result = await githubCreateRepository(args.token, args.name, args.description, args.isPrivate, args.autoInit);
+          result = await githubCreateRepository(githubToken, args.name, args.description, args.isPrivate, args.autoInit);
           break;
         case 'github_delete_repository':
-          result = await githubDeleteRepository(args.token, args.owner, args.repo);
+          result = await githubDeleteRepository(githubToken, args.owner, args.repo);
           break;
         case 'github_get_file_contents':
-          result = await githubGetFileContents(args.token, args.owner, args.repo, args.path, args.ref);
+          result = await githubGetFileContents(githubToken, args.owner, args.repo, args.path, args.ref);
           break;
         case 'github_create_or_update_file':
-          result = await githubCreateOrUpdateFile(args.token, args.owner, args.repo, args.path, args.content, args.message, args.branch, args.sha);
+          result = await githubCreateOrUpdateFile(githubToken, args.owner, args.repo, args.path, args.content, args.message, args.branch, args.sha);
           break;
         case 'github_delete_file':
-          result = await githubDeleteFile(args.token, args.owner, args.repo, args.path, args.message, args.sha, args.branch);
+          result = await githubDeleteFile(githubToken, args.owner, args.repo, args.path, args.message, args.sha, args.branch);
           break;
         case 'github_push_files':
-          result = await githubPushFiles(args.token, args.owner, args.repo, args.files, args.message, args.branch);
+          result = await githubPushFiles(githubToken, args.owner, args.repo, args.files, args.message, args.branch);
           break;
         case 'github_list_branches':
-          result = await githubListBranches(args.token, args.owner, args.repo);
+          result = await githubListBranches(githubToken, args.owner, args.repo);
           break;
         case 'github_create_branch':
-          result = await githubCreateBranch(args.token, args.owner, args.repo, args.branchName, args.fromBranch);
+          result = await githubCreateBranch(githubToken, args.owner, args.repo, args.branchName, args.fromBranch);
           break;
         case 'github_delete_branch':
-          result = await githubDeleteBranch(args.token, args.owner, args.repo, args.branch);
+          result = await githubDeleteBranch(githubToken, args.owner, args.repo, args.branch);
           break;
         case 'github_list_commits':
-          result = await githubListCommits(args.token, args.owner, args.repo, args.branch, args.perPage);
+          result = await githubListCommits(githubToken, args.owner, args.repo, args.branch, args.perPage);
           break;
         case 'github_get_commit':
-          result = await githubGetCommit(args.token, args.owner, args.repo, args.sha);
+          result = await githubGetCommit(githubToken, args.owner, args.repo, args.sha);
           break;
         case 'github_create_pull_request':
-          result = await githubCreatePullRequest(args.token, args.owner, args.repo, args.title, args.head, args.base, args.body, args.draft);
+          result = await githubCreatePullRequest(githubToken, args.owner, args.repo, args.title, args.head, args.base, args.body, args.draft);
           break;
         case 'github_list_pull_requests':
-          result = await githubListPullRequests(args.token, args.owner, args.repo, args.state, args.perPage);
+          result = await githubListPullRequests(githubToken, args.owner, args.repo, args.state, args.perPage);
           break;
         case 'github_get_pull_request':
-          result = await githubGetPullRequest(args.token, args.owner, args.repo, args.pullNumber);
+          result = await githubGetPullRequest(githubToken, args.owner, args.repo, args.pullNumber);
           break;
         case 'github_merge_pull_request':
-          result = await githubMergePullRequest(args.token, args.owner, args.repo, args.pullNumber, args.commitTitle, args.commitMessage, args.mergeMethod);
+          result = await githubMergePullRequest(githubToken, args.owner, args.repo, args.pullNumber, args.commitTitle, args.commitMessage, args.mergeMethod);
           break;
         case 'github_create_issue':
-          result = await githubCreateIssue(args.token, args.owner, args.repo, args.title, args.body, args.labels, args.assignees);
+          result = await githubCreateIssue(githubToken, args.owner, args.repo, args.title, args.body, args.labels, args.assignees);
           break;
         case 'github_list_issues':
-          result = await githubListIssues(args.token, args.owner, args.repo, args.state, args.perPage);
+          result = await githubListIssues(githubToken, args.owner, args.repo, args.state, args.perPage);
           break;
         case 'github_add_comment':
-          result = await githubAddComment(args.token, args.owner, args.repo, args.issueNumber, args.body);
+          result = await githubAddComment(githubToken, args.owner, args.repo, args.issueNumber, args.body);
           break;
         case 'github_get_tree':
-          result = await githubGetTree(args.token, args.owner, args.repo, args.sha, args.recursive);
+          result = await githubGetTree(githubToken, args.owner, args.repo, args.sha, args.recursive);
           break;
         case 'github_list_contents':
-          result = await githubListContents(args.token, args.owner, args.repo, args.path, args.ref);
+          result = await githubListContents(githubToken, args.owner, args.repo, args.path, args.ref);
           break;
         case 'github_search_repositories':
-          result = await githubSearchRepositories(args.token, args.query, args.sort, args.order, args.perPage);
+          result = await githubSearchRepositories(githubToken, args.query, args.sort, args.order, args.perPage);
           break;
         case 'github_search_code':
-          result = await githubSearchCode(args.token, args.query, args.perPage);
+          result = await githubSearchCode(githubToken, args.query, args.perPage);
           break;
 
         default:
