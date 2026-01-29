@@ -1,11 +1,12 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
 import cors from 'cors';
+import { randomUUID } from 'crypto';
 
 const app = express();
 app.use(cors());
@@ -542,49 +543,15 @@ function createMCPServer() {
 }
 
 // ============================================
-// HTTP/SSE TRANSPORT
+// STREAMABLE HTTP TRANSPORT
 // ============================================
 
-// Store active transports
-const transports = new Map();
+// Store active sessions
+const sessions = new Map();
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// SSE endpoint for MCP
-app.get('/sse', async (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  const transport = new SSEServerTransport('/messages', res);
-  const server = createMCPServer();
-
-  const sessionId = Math.random().toString(36).substring(7);
-  transports.set(sessionId, { transport, server });
-
-  res.on('close', () => {
-    transports.delete(sessionId);
-  });
-
-  await server.connect(transport);
-});
-
-// Messages endpoint for MCP
-app.post('/messages', async (req, res) => {
-  // Find the transport that matches this session
-  for (const [, { transport }] of transports) {
-    try {
-      await transport.handlePostMessage(req, res);
-      return;
-    } catch {
-      // Try next transport
-    }
-  }
-  res.status(404).json({ error: 'No active session' });
 });
 
 // MCP info endpoint
@@ -593,10 +560,8 @@ app.get('/mcp', (req, res) => {
     name: 'vocal-bridge-mcp',
     version: '1.0.0',
     description: 'MCP server for Railway and Supabase operations',
-    endpoints: {
-      sse: '/sse',
-      messages: '/messages'
-    },
+    transport: 'streamable-http',
+    endpoint: '/mcp',
     tools: [
       'railway_list_projects',
       'railway_create_project',
@@ -616,9 +581,111 @@ app.get('/mcp', (req, res) => {
   });
 });
 
+// Streamable HTTP MCP endpoint - handles POST requests
+app.post('/mcp', async (req, res) => {
+  try {
+    // Get or create session
+    let sessionId = req.headers['mcp-session-id'];
+    let transport;
+    let server;
+
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId);
+      transport = session.transport;
+      server = session.server;
+    } else {
+      // Create new session
+      sessionId = randomUUID();
+      server = createMCPServer();
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => sessionId,
+        onsessioninitialized: (id) => {
+          sessions.set(id, { transport, server });
+        }
+      });
+
+      // Connect server to transport
+      await server.connect(transport);
+      sessions.set(sessionId, { transport, server });
+    }
+
+    // Set session ID header
+    res.setHeader('Mcp-Session-Id', sessionId);
+
+    // Handle the request
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error('MCP error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Handle GET requests for SSE streaming (optional, for server-initiated messages)
+app.get('/mcp', async (req, res) => {
+  const sessionId = req.headers['mcp-session-id'];
+
+  if (!sessionId || !sessions.has(sessionId)) {
+    res.status(400).json({ error: 'Invalid or missing session ID' });
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Mcp-Session-Id', sessionId);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    sessions.delete(sessionId);
+  });
+
+  // Keep connection alive
+  const keepAlive = setInterval(() => {
+    res.write(': keepalive\n\n');
+  }, 30000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+  });
+});
+
+// Handle DELETE for session cleanup
+app.delete('/mcp', (req, res) => {
+  const sessionId = req.headers['mcp-session-id'];
+
+  if (sessionId && sessions.has(sessionId)) {
+    sessions.delete(sessionId);
+    res.status(200).json({ success: true });
+  } else {
+    res.status(404).json({ error: 'Session not found' });
+  }
+});
+
+// Legacy SSE endpoint for backwards compatibility
+app.get('/sse', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  const sessionId = randomUUID();
+  res.write(`event: endpoint\ndata: /messages?sessionId=${sessionId}\n\n`);
+
+  const keepAlive = setInterval(() => {
+    res.write(': keepalive\n\n');
+  }, 30000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`MCP Server running on port ${PORT}`);
-  console.log(`SSE endpoint: http://localhost:${PORT}/sse`);
-  console.log(`Messages endpoint: http://localhost:${PORT}/messages`);
-  console.log(`Info endpoint: http://localhost:${PORT}/mcp`);
+  console.log(`Streamable HTTP endpoint: http://localhost:${PORT}/mcp`);
+  console.log(`Legacy SSE endpoint: http://localhost:${PORT}/sse`);
+  console.log(`Info endpoint: http://localhost:${PORT}/mcp (GET)`);
 });
