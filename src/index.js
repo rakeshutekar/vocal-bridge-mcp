@@ -20,6 +20,9 @@ const RAILWAY_API_URL = 'https://backboard.railway.app/graphql/v2';
 // Supabase API configuration
 const SUPABASE_API_URL = 'https://api.supabase.com/v1';
 
+// GitHub API configuration
+const GITHUB_API_URL = 'https://api.github.com';
+
 // ============================================
 // RAILWAY API FUNCTIONS
 // ============================================
@@ -260,12 +263,273 @@ async function supabaseCreateTable(token, projectRef, tableName, columns) {
 }
 
 // ============================================
+// GITHUB API FUNCTIONS
+// ============================================
+
+async function githubRequest(token, endpoint, method = 'GET', body = null) {
+  const options = {
+    method,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  };
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${GITHUB_API_URL}${endpoint}`, options);
+
+  // Handle 204 No Content
+  if (response.status === 204) {
+    return { success: true };
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: response.statusText }));
+    throw new Error(error.message || `GitHub API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function githubGetUser(token) {
+  return githubRequest(token, '/user');
+}
+
+async function githubVerifyToken(token) {
+  try {
+    const user = await githubGetUser(token);
+    return {
+      valid: true,
+      user: {
+        login: user.login,
+        name: user.name,
+        email: user.email,
+        avatar_url: user.avatar_url
+      }
+    };
+  } catch (error) {
+    return { valid: false, error: error.message };
+  }
+}
+
+async function githubListRepositories(token, sort = 'updated', perPage = 30) {
+  return githubRequest(token, `/user/repos?sort=${sort}&per_page=${perPage}`);
+}
+
+async function githubGetRepository(token, owner, repo) {
+  return githubRequest(token, `/repos/${owner}/${repo}`);
+}
+
+async function githubCreateRepository(token, name, description = '', isPrivate = false, autoInit = true) {
+  return githubRequest(token, '/user/repos', 'POST', {
+    name,
+    description,
+    private: isPrivate,
+    auto_init: autoInit
+  });
+}
+
+async function githubDeleteRepository(token, owner, repo) {
+  return githubRequest(token, `/repos/${owner}/${repo}`, 'DELETE');
+}
+
+async function githubGetFileContents(token, owner, repo, path, ref = 'main') {
+  const data = await githubRequest(token, `/repos/${owner}/${repo}/contents/${path}?ref=${ref}`);
+
+  // Decode base64 content if it's a file
+  if (data.content && data.encoding === 'base64') {
+    data.decodedContent = Buffer.from(data.content, 'base64').toString('utf-8');
+  }
+
+  return data;
+}
+
+async function githubCreateOrUpdateFile(token, owner, repo, path, content, message, branch = 'main', sha = null) {
+  const body = {
+    message,
+    content: Buffer.from(content).toString('base64'),
+    branch
+  };
+
+  if (sha) {
+    body.sha = sha;
+  }
+
+  return githubRequest(token, `/repos/${owner}/${repo}/contents/${path}`, 'PUT', body);
+}
+
+async function githubDeleteFile(token, owner, repo, path, message, sha, branch = 'main') {
+  return githubRequest(token, `/repos/${owner}/${repo}/contents/${path}`, 'DELETE', {
+    message,
+    sha,
+    branch
+  });
+}
+
+async function githubPushFiles(token, owner, repo, files, message, branch = 'main') {
+  // 1. Get the current commit SHA for the branch
+  const refData = await githubRequest(token, `/repos/${owner}/${repo}/git/ref/heads/${branch}`);
+  const currentCommitSha = refData.object.sha;
+
+  // 2. Get the tree SHA from the current commit
+  const commitData = await githubRequest(token, `/repos/${owner}/${repo}/git/commits/${currentCommitSha}`);
+  const baseTreeSha = commitData.tree.sha;
+
+  // 3. Create blobs for each file
+  const treeItems = await Promise.all(
+    files.map(async (file) => {
+      const blobData = await githubRequest(token, `/repos/${owner}/${repo}/git/blobs`, 'POST', {
+        content: file.content,
+        encoding: 'utf-8'
+      });
+
+      return {
+        path: file.path,
+        mode: '100644',
+        type: 'blob',
+        sha: blobData.sha
+      };
+    })
+  );
+
+  // 4. Create a new tree
+  const newTree = await githubRequest(token, `/repos/${owner}/${repo}/git/trees`, 'POST', {
+    base_tree: baseTreeSha,
+    tree: treeItems
+  });
+
+  // 5. Create a new commit
+  const newCommit = await githubRequest(token, `/repos/${owner}/${repo}/git/commits`, 'POST', {
+    message,
+    tree: newTree.sha,
+    parents: [currentCommitSha]
+  });
+
+  // 6. Update the branch reference
+  await githubRequest(token, `/repos/${owner}/${repo}/git/refs/heads/${branch}`, 'PATCH', {
+    sha: newCommit.sha
+  });
+
+  return {
+    commit: newCommit,
+    filesUpdated: files.length
+  };
+}
+
+async function githubListBranches(token, owner, repo) {
+  return githubRequest(token, `/repos/${owner}/${repo}/branches`);
+}
+
+async function githubGetBranch(token, owner, repo, branch) {
+  return githubRequest(token, `/repos/${owner}/${repo}/branches/${branch}`);
+}
+
+async function githubCreateBranch(token, owner, repo, branchName, fromBranch = 'main') {
+  // Get the SHA of the source branch
+  const sourceBranch = await githubGetBranch(token, owner, repo, fromBranch);
+  const sha = sourceBranch.commit.sha;
+
+  return githubRequest(token, `/repos/${owner}/${repo}/git/refs`, 'POST', {
+    ref: `refs/heads/${branchName}`,
+    sha
+  });
+}
+
+async function githubDeleteBranch(token, owner, repo, branch) {
+  return githubRequest(token, `/repos/${owner}/${repo}/git/refs/heads/${branch}`, 'DELETE');
+}
+
+async function githubListCommits(token, owner, repo, branch = 'main', perPage = 30) {
+  return githubRequest(token, `/repos/${owner}/${repo}/commits?sha=${branch}&per_page=${perPage}`);
+}
+
+async function githubGetCommit(token, owner, repo, sha) {
+  return githubRequest(token, `/repos/${owner}/${repo}/commits/${sha}`);
+}
+
+async function githubCreatePullRequest(token, owner, repo, title, head, base, body = '', draft = false) {
+  return githubRequest(token, `/repos/${owner}/${repo}/pulls`, 'POST', {
+    title,
+    head,
+    base,
+    body,
+    draft
+  });
+}
+
+async function githubListPullRequests(token, owner, repo, state = 'open', perPage = 30) {
+  return githubRequest(token, `/repos/${owner}/${repo}/pulls?state=${state}&per_page=${perPage}`);
+}
+
+async function githubGetPullRequest(token, owner, repo, pullNumber) {
+  return githubRequest(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`);
+}
+
+async function githubMergePullRequest(token, owner, repo, pullNumber, commitTitle = '', commitMessage = '', mergeMethod = 'merge') {
+  return githubRequest(token, `/repos/${owner}/${repo}/pulls/${pullNumber}/merge`, 'PUT', {
+    commit_title: commitTitle,
+    commit_message: commitMessage,
+    merge_method: mergeMethod
+  });
+}
+
+async function githubCreateIssue(token, owner, repo, title, body = '', labels = [], assignees = []) {
+  return githubRequest(token, `/repos/${owner}/${repo}/issues`, 'POST', {
+    title,
+    body,
+    labels,
+    assignees
+  });
+}
+
+async function githubListIssues(token, owner, repo, state = 'open', perPage = 30) {
+  return githubRequest(token, `/repos/${owner}/${repo}/issues?state=${state}&per_page=${perPage}`);
+}
+
+async function githubAddComment(token, owner, repo, issueNumber, body) {
+  return githubRequest(token, `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, 'POST', { body });
+}
+
+async function githubGetTree(token, owner, repo, sha = 'main', recursive = true) {
+  const params = recursive ? '?recursive=1' : '';
+  return githubRequest(token, `/repos/${owner}/${repo}/git/trees/${sha}${params}`);
+}
+
+async function githubListContents(token, owner, repo, path = '', ref = 'main') {
+  const endpoint = path
+    ? `/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
+    : `/repos/${owner}/${repo}/contents?ref=${ref}`;
+  return githubRequest(token, endpoint);
+}
+
+async function githubSearchRepositories(token, query, sort = 'stars', order = 'desc', perPage = 10) {
+  const params = new URLSearchParams({
+    q: query,
+    sort,
+    order,
+    per_page: perPage.toString()
+  });
+  return githubRequest(token, `/search/repositories?${params}`);
+}
+
+async function githubSearchCode(token, query, perPage = 30) {
+  const params = new URLSearchParams({
+    q: query,
+    per_page: perPage.toString()
+  });
+  return githubRequest(token, `/search/code?${params}`);
+}
+
+// ============================================
 // MCP SERVER SETUP
 // ============================================
 
 function createMCPServer() {
   const server = new Server(
-    { name: 'vocal-bridge-mcp', version: '1.0.0' },
+    { name: 'vocal-bridge-mcp', version: '1.1.0' },
     { capabilities: { tools: {} } }
   );
 
@@ -466,6 +730,400 @@ function createMCPServer() {
           },
           required: ['token', 'projectRef', 'tableName', 'columns']
         }
+      },
+      // GitHub Tools
+      {
+        name: 'github_verify_token',
+        description: 'Verify GitHub access token and get user info',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' }
+          },
+          required: ['token']
+        }
+      },
+      {
+        name: 'github_get_user',
+        description: 'Get authenticated GitHub user info',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' }
+          },
+          required: ['token']
+        }
+      },
+      {
+        name: 'github_list_repositories',
+        description: 'List repositories for the authenticated user',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            sort: { type: 'string', description: 'Sort by: created, updated, pushed, full_name (default: updated)' },
+            perPage: { type: 'number', description: 'Results per page (default: 30)' }
+          },
+          required: ['token']
+        }
+      },
+      {
+        name: 'github_get_repository',
+        description: 'Get repository details',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_create_repository',
+        description: 'Create a new GitHub repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            name: { type: 'string', description: 'Repository name' },
+            description: { type: 'string', description: 'Repository description' },
+            isPrivate: { type: 'boolean', description: 'Make repository private (default: false)' },
+            autoInit: { type: 'boolean', description: 'Initialize with README (default: true)' }
+          },
+          required: ['token', 'name']
+        }
+      },
+      {
+        name: 'github_delete_repository',
+        description: 'Delete a GitHub repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_get_file_contents',
+        description: 'Get contents of a file from a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            path: { type: 'string', description: 'File path' },
+            ref: { type: 'string', description: 'Branch or commit (default: main)' }
+          },
+          required: ['token', 'owner', 'repo', 'path']
+        }
+      },
+      {
+        name: 'github_create_or_update_file',
+        description: 'Create or update a file in a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            path: { type: 'string', description: 'File path' },
+            content: { type: 'string', description: 'File content' },
+            message: { type: 'string', description: 'Commit message' },
+            branch: { type: 'string', description: 'Branch name (default: main)' },
+            sha: { type: 'string', description: 'SHA of file to update (required for updates)' }
+          },
+          required: ['token', 'owner', 'repo', 'path', 'content', 'message']
+        }
+      },
+      {
+        name: 'github_delete_file',
+        description: 'Delete a file from a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            path: { type: 'string', description: 'File path' },
+            message: { type: 'string', description: 'Commit message' },
+            sha: { type: 'string', description: 'SHA of file to delete' },
+            branch: { type: 'string', description: 'Branch name (default: main)' }
+          },
+          required: ['token', 'owner', 'repo', 'path', 'message', 'sha']
+        }
+      },
+      {
+        name: 'github_push_files',
+        description: 'Push multiple files in a single commit using Git Data API',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            files: {
+              type: 'array',
+              description: 'Array of files to push',
+              items: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string', description: 'File path' },
+                  content: { type: 'string', description: 'File content' }
+                },
+                required: ['path', 'content']
+              }
+            },
+            message: { type: 'string', description: 'Commit message' },
+            branch: { type: 'string', description: 'Branch name (default: main)' }
+          },
+          required: ['token', 'owner', 'repo', 'files', 'message']
+        }
+      },
+      {
+        name: 'github_list_branches',
+        description: 'List branches in a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_create_branch',
+        description: 'Create a new branch',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            branchName: { type: 'string', description: 'New branch name' },
+            fromBranch: { type: 'string', description: 'Source branch (default: main)' }
+          },
+          required: ['token', 'owner', 'repo', 'branchName']
+        }
+      },
+      {
+        name: 'github_delete_branch',
+        description: 'Delete a branch',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            branch: { type: 'string', description: 'Branch name to delete' }
+          },
+          required: ['token', 'owner', 'repo', 'branch']
+        }
+      },
+      {
+        name: 'github_list_commits',
+        description: 'List commits in a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            branch: { type: 'string', description: 'Branch name (default: main)' },
+            perPage: { type: 'number', description: 'Results per page (default: 30)' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_get_commit',
+        description: 'Get a specific commit',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            sha: { type: 'string', description: 'Commit SHA' }
+          },
+          required: ['token', 'owner', 'repo', 'sha']
+        }
+      },
+      {
+        name: 'github_create_pull_request',
+        description: 'Create a pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            title: { type: 'string', description: 'PR title' },
+            head: { type: 'string', description: 'Source branch' },
+            base: { type: 'string', description: 'Target branch' },
+            body: { type: 'string', description: 'PR description' },
+            draft: { type: 'boolean', description: 'Create as draft (default: false)' }
+          },
+          required: ['token', 'owner', 'repo', 'title', 'head', 'base']
+        }
+      },
+      {
+        name: 'github_list_pull_requests',
+        description: 'List pull requests',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            state: { type: 'string', description: 'State: open, closed, all (default: open)' },
+            perPage: { type: 'number', description: 'Results per page (default: 30)' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_get_pull_request',
+        description: 'Get a specific pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            pullNumber: { type: 'number', description: 'Pull request number' }
+          },
+          required: ['token', 'owner', 'repo', 'pullNumber']
+        }
+      },
+      {
+        name: 'github_merge_pull_request',
+        description: 'Merge a pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            pullNumber: { type: 'number', description: 'Pull request number' },
+            commitTitle: { type: 'string', description: 'Merge commit title' },
+            commitMessage: { type: 'string', description: 'Merge commit message' },
+            mergeMethod: { type: 'string', description: 'Merge method: merge, squash, rebase (default: merge)' }
+          },
+          required: ['token', 'owner', 'repo', 'pullNumber']
+        }
+      },
+      {
+        name: 'github_create_issue',
+        description: 'Create an issue',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            title: { type: 'string', description: 'Issue title' },
+            body: { type: 'string', description: 'Issue body' },
+            labels: { type: 'array', items: { type: 'string' }, description: 'Labels' },
+            assignees: { type: 'array', items: { type: 'string' }, description: 'Assignees' }
+          },
+          required: ['token', 'owner', 'repo', 'title']
+        }
+      },
+      {
+        name: 'github_list_issues',
+        description: 'List issues in a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            state: { type: 'string', description: 'State: open, closed, all (default: open)' },
+            perPage: { type: 'number', description: 'Results per page (default: 30)' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_add_comment',
+        description: 'Add a comment to an issue or PR',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            issueNumber: { type: 'number', description: 'Issue or PR number' },
+            body: { type: 'string', description: 'Comment body' }
+          },
+          required: ['token', 'owner', 'repo', 'issueNumber', 'body']
+        }
+      },
+      {
+        name: 'github_get_tree',
+        description: 'Get repository tree (directory structure)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            sha: { type: 'string', description: 'Tree SHA or branch (default: main)' },
+            recursive: { type: 'boolean', description: 'Get tree recursively (default: true)' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_list_contents',
+        description: 'List directory contents',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            path: { type: 'string', description: 'Directory path (default: root)' },
+            ref: { type: 'string', description: 'Branch or commit (default: main)' }
+          },
+          required: ['token', 'owner', 'repo']
+        }
+      },
+      {
+        name: 'github_search_repositories',
+        description: 'Search GitHub repositories',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            query: { type: 'string', description: 'Search query' },
+            sort: { type: 'string', description: 'Sort by: stars, forks, updated (default: stars)' },
+            order: { type: 'string', description: 'Order: asc, desc (default: desc)' },
+            perPage: { type: 'number', description: 'Results per page (default: 10)' }
+          },
+          required: ['token', 'query']
+        }
+      },
+      {
+        name: 'github_search_code',
+        description: 'Search code across repositories',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', description: 'GitHub personal access token' },
+            query: { type: 'string', description: 'Search query' },
+            perPage: { type: 'number', description: 'Results per page (default: 30)' }
+          },
+          required: ['token', 'query']
+        }
       }
     ]
   }));
@@ -524,6 +1182,86 @@ function createMCPServer() {
           result = await supabaseCreateTable(args.token, args.projectRef, args.tableName, args.columns);
           break;
 
+        // GitHub tools
+        case 'github_verify_token':
+          result = await githubVerifyToken(args.token);
+          break;
+        case 'github_get_user':
+          result = await githubGetUser(args.token);
+          break;
+        case 'github_list_repositories':
+          result = await githubListRepositories(args.token, args.sort, args.perPage);
+          break;
+        case 'github_get_repository':
+          result = await githubGetRepository(args.token, args.owner, args.repo);
+          break;
+        case 'github_create_repository':
+          result = await githubCreateRepository(args.token, args.name, args.description, args.isPrivate, args.autoInit);
+          break;
+        case 'github_delete_repository':
+          result = await githubDeleteRepository(args.token, args.owner, args.repo);
+          break;
+        case 'github_get_file_contents':
+          result = await githubGetFileContents(args.token, args.owner, args.repo, args.path, args.ref);
+          break;
+        case 'github_create_or_update_file':
+          result = await githubCreateOrUpdateFile(args.token, args.owner, args.repo, args.path, args.content, args.message, args.branch, args.sha);
+          break;
+        case 'github_delete_file':
+          result = await githubDeleteFile(args.token, args.owner, args.repo, args.path, args.message, args.sha, args.branch);
+          break;
+        case 'github_push_files':
+          result = await githubPushFiles(args.token, args.owner, args.repo, args.files, args.message, args.branch);
+          break;
+        case 'github_list_branches':
+          result = await githubListBranches(args.token, args.owner, args.repo);
+          break;
+        case 'github_create_branch':
+          result = await githubCreateBranch(args.token, args.owner, args.repo, args.branchName, args.fromBranch);
+          break;
+        case 'github_delete_branch':
+          result = await githubDeleteBranch(args.token, args.owner, args.repo, args.branch);
+          break;
+        case 'github_list_commits':
+          result = await githubListCommits(args.token, args.owner, args.repo, args.branch, args.perPage);
+          break;
+        case 'github_get_commit':
+          result = await githubGetCommit(args.token, args.owner, args.repo, args.sha);
+          break;
+        case 'github_create_pull_request':
+          result = await githubCreatePullRequest(args.token, args.owner, args.repo, args.title, args.head, args.base, args.body, args.draft);
+          break;
+        case 'github_list_pull_requests':
+          result = await githubListPullRequests(args.token, args.owner, args.repo, args.state, args.perPage);
+          break;
+        case 'github_get_pull_request':
+          result = await githubGetPullRequest(args.token, args.owner, args.repo, args.pullNumber);
+          break;
+        case 'github_merge_pull_request':
+          result = await githubMergePullRequest(args.token, args.owner, args.repo, args.pullNumber, args.commitTitle, args.commitMessage, args.mergeMethod);
+          break;
+        case 'github_create_issue':
+          result = await githubCreateIssue(args.token, args.owner, args.repo, args.title, args.body, args.labels, args.assignees);
+          break;
+        case 'github_list_issues':
+          result = await githubListIssues(args.token, args.owner, args.repo, args.state, args.perPage);
+          break;
+        case 'github_add_comment':
+          result = await githubAddComment(args.token, args.owner, args.repo, args.issueNumber, args.body);
+          break;
+        case 'github_get_tree':
+          result = await githubGetTree(args.token, args.owner, args.repo, args.sha, args.recursive);
+          break;
+        case 'github_list_contents':
+          result = await githubListContents(args.token, args.owner, args.repo, args.path, args.ref);
+          break;
+        case 'github_search_repositories':
+          result = await githubSearchRepositories(args.token, args.query, args.sort, args.order, args.perPage);
+          break;
+        case 'github_search_code':
+          result = await githubSearchCode(args.token, args.query, args.perPage);
+          break;
+
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -558,11 +1296,12 @@ app.get('/health', (req, res) => {
 app.get('/mcp', (req, res) => {
   res.json({
     name: 'vocal-bridge-mcp',
-    version: '1.0.0',
-    description: 'MCP server for Railway and Supabase operations',
+    version: '1.1.0',
+    description: 'MCP server for Railway, Supabase, and GitHub operations',
     transport: 'streamable-http',
     endpoint: '/mcp',
     tools: [
+      // Railway tools
       'railway_list_projects',
       'railway_create_project',
       'railway_create_service',
@@ -570,13 +1309,41 @@ app.get('/mcp', (req, res) => {
       'railway_generate_domain',
       'railway_set_variables',
       'railway_get_deployments',
+      // Supabase tools
       'supabase_list_projects',
       'supabase_get_project',
       'supabase_create_project',
       'supabase_list_organizations',
       'supabase_run_sql',
       'supabase_list_tables',
-      'supabase_create_table'
+      'supabase_create_table',
+      // GitHub tools
+      'github_verify_token',
+      'github_get_user',
+      'github_list_repositories',
+      'github_get_repository',
+      'github_create_repository',
+      'github_delete_repository',
+      'github_get_file_contents',
+      'github_create_or_update_file',
+      'github_delete_file',
+      'github_push_files',
+      'github_list_branches',
+      'github_create_branch',
+      'github_delete_branch',
+      'github_list_commits',
+      'github_get_commit',
+      'github_create_pull_request',
+      'github_list_pull_requests',
+      'github_get_pull_request',
+      'github_merge_pull_request',
+      'github_create_issue',
+      'github_list_issues',
+      'github_add_comment',
+      'github_get_tree',
+      'github_list_contents',
+      'github_search_repositories',
+      'github_search_code'
     ]
   });
 });
@@ -688,4 +1455,5 @@ app.listen(PORT, () => {
   console.log(`Streamable HTTP endpoint: http://localhost:${PORT}/mcp`);
   console.log(`Legacy SSE endpoint: http://localhost:${PORT}/sse`);
   console.log(`Info endpoint: http://localhost:${PORT}/mcp (GET)`);
+  console.log('Available services: Railway, Supabase, GitHub');
 });
