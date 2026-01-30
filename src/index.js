@@ -26,6 +26,48 @@ function getSupabaseToken() {
   return process.env.SUPABASE_TOKEN || '';
 }
 
+// ============================================
+// LOGGING UTILITIES
+// ============================================
+
+function logToolCall(toolName, args, sessionId = 'unknown') {
+  const timestamp = new Date().toISOString();
+  const sanitizedArgs = sanitizeArgs(args);
+  console.log(`\n${'═'.repeat(70)}`);
+  console.log(`📥 TOOL CALL: ${toolName}`);
+  console.log(`${'─'.repeat(70)}`);
+  console.log(`⏰ Time: ${timestamp}`);
+  console.log(`🔑 Session: ${sessionId}`);
+  console.log(`📝 Arguments: ${JSON.stringify(sanitizedArgs, null, 2)}`);
+}
+
+function logToolResult(toolName, result, duration, isError = false) {
+  const icon = isError ? '❌' : '✅';
+  const status = isError ? 'ERROR' : 'SUCCESS';
+  console.log(`${'─'.repeat(70)}`);
+  console.log(`${icon} Result: ${status} (${duration}ms)`);
+  if (isError) {
+    console.log(`💥 Error: ${result}`);
+  } else {
+    const preview = JSON.stringify(result).substring(0, 500);
+    console.log(`📤 Response: ${preview}${preview.length >= 500 ? '...' : ''}`);
+  }
+  console.log(`${'═'.repeat(70)}\n`);
+}
+
+function sanitizeArgs(args) {
+  if (!args) return args;
+  const sanitized = { ...args };
+  // Hide sensitive content but show structure
+  if (sanitized.content && sanitized.content.length > 200) {
+    sanitized.content = `[${sanitized.content.length} chars]`;
+  }
+  if (sanitized.token) sanitized.token = '[REDACTED]';
+  if (sanitized.password) sanitized.password = '[REDACTED]';
+  if (sanitized.api_key) sanitized.api_key = '[REDACTED]';
+  return sanitized;
+}
+
 // Workspace directory for filesystem operations
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/workspace';
 
@@ -885,6 +927,10 @@ function createMCPServer() {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const startTime = Date.now();
+
+    // Log the incoming tool call
+    logToolCall(name, args);
 
     try {
       let result;
@@ -989,10 +1035,18 @@ function createMCPServer() {
           throw new Error(`Unknown tool: ${name}`);
       }
 
+      // Log successful result
+      const duration = Date.now() - startTime;
+      logToolResult(name, result, duration);
+
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
       };
     } catch (error) {
+      // Log error result
+      const duration = Date.now() - startTime;
+      logToolResult(name, error.message, duration, true);
+
       return {
         content: [{ type: 'text', text: `Error: ${error.message}` }],
         isError: true
