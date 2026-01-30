@@ -377,29 +377,47 @@ async function railwayGraphQL(query, variables = {}) {
 }
 
 async function railwayGetProjects() {
-  const query = `
+  // First get all workspaces
+  const workspacesQuery = `
     query {
       me {
-        projects {
-          edges {
-            node {
-              id
-              name
-              description
-              createdAt
-              environments {
-                edges {
-                  node {
-                    id
-                    name
+        workspaces {
+          id
+          name
+        }
+      }
+    }
+  `;
+  const workspacesData = await railwayGraphQL(workspacesQuery);
+  const workspaces = workspacesData.me.workspaces;
+
+  // Then get projects from each workspace
+  const allProjects = [];
+  for (const workspace of workspaces) {
+    const projectsQuery = `
+      query($workspaceId: String!) {
+        workspace(workspaceId: $workspaceId) {
+          projects {
+            edges {
+              node {
+                id
+                name
+                description
+                createdAt
+                environments {
+                  edges {
+                    node {
+                      id
+                      name
+                    }
                   }
                 }
-              }
-              services {
-                edges {
-                  node {
-                    id
-                    name
+                services {
+                  edges {
+                    node {
+                      id
+                      name
+                    }
                   }
                 }
               }
@@ -407,14 +425,25 @@ async function railwayGetProjects() {
           }
         }
       }
+    `;
+    try {
+      const data = await railwayGraphQL(projectsQuery, { workspaceId: workspace.id });
+      if (data.workspace?.projects?.edges) {
+        const projects = data.workspace.projects.edges.map(e => ({
+          ...e.node,
+          workspace: workspace.name,
+          environments: e.node.environments?.edges?.map(env => env.node) || [],
+          services: e.node.services?.edges?.map(svc => svc.node) || []
+        }));
+        allProjects.push(...projects);
+      }
+    } catch (err) {
+      // Continue with other workspaces if one fails
+      console.error(`Failed to get projects for workspace ${workspace.name}:`, err.message);
     }
-  `;
-  const data = await railwayGraphQL(query);
-  return data.me.projects.edges.map(e => ({
-    ...e.node,
-    environments: e.node.environments.edges.map(env => env.node),
-    services: e.node.services.edges.map(svc => svc.node)
-  }));
+  }
+
+  return { projects: allProjects };
 }
 
 async function railwayCreateProject(name, description = '') {
