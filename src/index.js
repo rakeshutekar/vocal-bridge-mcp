@@ -17,9 +17,14 @@ app.use(express.json({ limit: '50mb' }));
 
 const PORT = process.env.PORT || 8080;
 
-// API Tokens from environment variables
-const RAILWAY_TOKEN = process.env.RAILWAY_TOKEN || '';
-const SUPABASE_TOKEN = process.env.SUPABASE_TOKEN || '';
+// API Tokens - read dynamically to support hot-reload of env vars
+function getRailwayToken() {
+  return process.env.RAILWAY_TOKEN || '';
+}
+
+function getSupabaseToken() {
+  return process.env.SUPABASE_TOKEN || '';
+}
 
 // Workspace directory for filesystem operations
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/tmp/workspace';
@@ -288,13 +293,14 @@ function memoryGetRelations(entityId) {
 // ============================================
 
 async function railwayGraphQL(query, variables = {}) {
-  if (!RAILWAY_TOKEN) {
+  const railwayToken = getRailwayToken();
+  if (!railwayToken) {
     throw new Error('RAILWAY_TOKEN environment variable is not set');
   }
   const response = await fetch(RAILWAY_API_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${RAILWAY_TOKEN}`,
+      'Authorization': `Bearer ${railwayToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ query, variables }),
@@ -446,13 +452,14 @@ async function railwayGetDeployments(projectId) {
 // ============================================
 
 async function supabaseRequest(endpoint, method = 'GET', body = null) {
-  if (!SUPABASE_TOKEN) {
+  const supabaseToken = getSupabaseToken();
+  if (!supabaseToken) {
     throw new Error('SUPABASE_TOKEN environment variable is not set');
   }
   const options = {
     method,
     headers: {
-      'Authorization': `Bearer ${SUPABASE_TOKEN}`,
+      'Authorization': `Bearer ${supabaseToken}`,
       'Content-Type': 'application/json',
     },
   };
@@ -1006,8 +1013,8 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    railwayTokenConfigured: !!RAILWAY_TOKEN,
-    supabaseTokenConfigured: !!SUPABASE_TOKEN,
+    railwayTokenConfigured: !!getRailwayToken(),
+    supabaseTokenConfigured: !!getSupabaseToken(),
     workspaceDir: WORKSPACE_DIR,
     dbPath: DB_PATH
   });
@@ -1023,8 +1030,8 @@ app.get('/mcp', (req, res) => {
     capabilities: {
       filesystem: true,
       memory: true,
-      railway: !!RAILWAY_TOKEN,
-      supabase: !!SUPABASE_TOKEN
+      railway: !!getRailwayToken(),
+      supabase: !!getSupabaseToken()
     },
     tools: {
       filesystem: ['fs_write_file', 'fs_read_file', 'fs_edit_file', 'fs_delete_file', 'fs_create_directory', 'fs_list_directory', 'fs_directory_tree'],
@@ -1080,8 +1087,8 @@ app.listen(PORT, () => {
   console.log(`Vocal Bridge MCP Server v2.0.0 running on port ${PORT}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Railway token configured: ${!!RAILWAY_TOKEN}`);
-  console.log(`Supabase token configured: ${!!SUPABASE_TOKEN}`);
+  console.log(`Railway token configured: ${!!getRailwayToken()}`);
+  console.log(`Supabase token configured: ${!!getSupabaseToken()}`);
   console.log(`Workspace directory: ${WORKSPACE_DIR}`);
   console.log(`Database path: ${DB_PATH}`);
 });
