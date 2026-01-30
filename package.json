@@ -1,17 +1,20 @@
 {
   "name": "vocal-bridge-mcp-servers",
-  "version": "1.0.0",
-  "description": "Remote MCP servers for Railway and Supabase",
+  "version": "2.0.0",
+  "description": "Remote MCP servers for Railway, Supabase, Filesystem, and Memory",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node test-mcp.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "better-sqlite3": "^11.0.0",
+    "uuid": "^9.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
