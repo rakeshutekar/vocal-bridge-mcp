@@ -15,6 +15,21 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const sessionId = req.headers['mcp-session-id'] || 'no-session';
+
+  // Log all POST requests to /mcp
+  if (req.method === 'POST' && req.path === '/mcp') {
+    const method = req.body?.method || 'unknown';
+    const toolName = req.body?.params?.name || '';
+    process.stdout.write(`\n[${timestamp}] MCP REQUEST: ${method}${toolName ? ' -> ' + toolName : ''} (session: ${sessionId.slice(0, 8)}...)\n`);
+  }
+
+  next();
+});
+
 const PORT = process.env.PORT || 8080;
 
 // API Tokens - read dynamically to support hot-reload of env vars
@@ -30,29 +45,35 @@ function getSupabaseToken() {
 // LOGGING UTILITIES
 // ============================================
 
+function log(message) {
+  // Use process.stdout.write with newline to ensure immediate flush
+  process.stdout.write(message + '\n');
+}
+
 function logToolCall(toolName, args, sessionId = 'unknown') {
   const timestamp = new Date().toISOString();
   const sanitizedArgs = sanitizeArgs(args);
-  console.log(`\n${'═'.repeat(70)}`);
-  console.log(`📥 TOOL CALL: ${toolName}`);
-  console.log(`${'─'.repeat(70)}`);
-  console.log(`⏰ Time: ${timestamp}`);
-  console.log(`🔑 Session: ${sessionId}`);
-  console.log(`📝 Arguments: ${JSON.stringify(sanitizedArgs, null, 2)}`);
+  log('');
+  log('======================================================================');
+  log(`[MCP TOOL CALL] ${toolName}`);
+  log('----------------------------------------------------------------------');
+  log(`Time: ${timestamp}`);
+  log(`Session: ${sessionId}`);
+  log(`Arguments: ${JSON.stringify(sanitizedArgs, null, 2)}`);
+  log('----------------------------------------------------------------------');
 }
 
 function logToolResult(toolName, result, duration, isError = false) {
-  const icon = isError ? '❌' : '✅';
   const status = isError ? 'ERROR' : 'SUCCESS';
-  console.log(`${'─'.repeat(70)}`);
-  console.log(`${icon} Result: ${status} (${duration}ms)`);
+  log(`Result: ${status} (${duration}ms)`);
   if (isError) {
-    console.log(`💥 Error: ${result}`);
+    log(`Error: ${result}`);
   } else {
     const preview = JSON.stringify(result).substring(0, 500);
-    console.log(`📤 Response: ${preview}${preview.length >= 500 ? '...' : ''}`);
+    log(`Response: ${preview}${preview.length >= 500 ? '...' : ''}`);
   }
-  console.log(`${'═'.repeat(70)}\n`);
+  log('======================================================================');
+  log('');
 }
 
 function sanitizeArgs(args) {
